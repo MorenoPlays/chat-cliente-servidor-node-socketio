@@ -90,7 +90,11 @@ export const useLobbySocket = (userData) => {
     // Jogo iniciando
     socket.on("game-starting", ({ roomId }) => {
       console.log("🎮 Jogo iniciando na sala:", roomId);
-      window.location.href = "/game";
+      // Guardar roomId antes de navegar
+      sessionStorage.setItem("currentRoomId", roomId);
+      // Usar navigate do React Router (será feito no componente)
+      // NÃO usar window.location.href pois desconecta o socket
+      window.dispatchEvent(new CustomEvent("game-starting", { detail: { roomId } }));
     });
 
     // Sala fechada

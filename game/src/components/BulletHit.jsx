@@ -37,12 +37,14 @@ export const BulletHit = ({ nb = 100, position, onEnded }) => {
   );
 
   useEffect(() => {
-    setTimeout(() => {
-      if (isHost()) {
-        onEnded();
-      }
+    // Desaparecer após 500ms em todos os clientes
+    // Não verificar isHost() pois em multiplayer ninguém é host
+    const timer = setTimeout(() => {
+      onEnded();
     }, 500);
-  }, []);
+    
+    return () => clearTimeout(timer);
+  }, [onEnded]);
 
   return (
     <group position={[position.x, position.y, position.z]}>

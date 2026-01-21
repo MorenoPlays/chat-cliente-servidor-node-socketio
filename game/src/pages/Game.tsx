@@ -2,8 +2,9 @@ import { Loader, PerformanceMonitor, SoftShadows } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
 import { Physics } from "@react-three/rapier";
-import { Suspense, useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { Experience } from "../components/Experience";
+import { GameOverScreen } from "../components/GameOverScreen";
 import { Leaderboard } from "../components/Leaderboard";
 import { getLobbySocket } from "@/hooks/useLobbySocket";
 
@@ -23,18 +24,28 @@ function Game() {
     health: 100,
     connected: false 
   });
+  const [gameOver, setGameOver] = useState(false);
+  const [winner, setWinner] = useState<{ id: string; name: string } | null>(null);
+  const [currentPlayer, setCurrentPlayer] = useState<{ id: string; name: string } | null>(null);
   const socket = getLobbySocket();
-  const gameStatsRef = useRef(gameStats);
 
   useEffect(() => {
-    console.log("socket: ", socket);
+    //console.log("socket: ", socket);
     
-    // Obter playerConfig do localStorage ou usar padrão
-    const savedConfig = localStorage.getItem("playerConfig");
+    // ✅ CORRIGIDO: Obter playerConfig de sessionStorage (por aba) em vez de localStorage
+    const savedConfig = sessionStorage.getItem("gamePlayerConfig") || localStorage.getItem("current_user");
     let playerCfg;
     
     if (savedConfig) {
-      playerCfg = JSON.parse(savedConfig);
+      try {
+        playerCfg = JSON.parse(savedConfig);
+      } catch {
+        playerCfg = {
+          name: "Player",
+          color: "#59bf82",
+          avatar: "🎮",
+        };
+      }
     } else {
       playerCfg = {
         name: "Player",
@@ -44,13 +55,27 @@ function Game() {
     }
     
     setPlayerConfig(playerCfg);
-    console.log("Jogador configurado:", playerCfg);
+    //console.log("✅ Jogador configurado:", playerCfg);
   }, [socket]);
 
   return (
     <>
+      {/* GameOverScreen fora da árvore R3F */}
+      {gameOver && winner && currentPlayer && (
+        <GameOverScreen 
+          winner={winner} 
+          currentPlayer={currentPlayer} 
+          leaveRoom={() => {
+            // Reset game state
+            setGameOver(false);
+            setWinner(null);
+            setCurrentPlayer(null);
+          }}
+        />
+      )}
+
       <Loader />
-      <Leaderboard />
+      <Leaderboard PlayerConfig={playerConfig} />
       
       {/* Debug info overlay */}
       {gameStats.connected && (
@@ -94,6 +119,11 @@ function Game() {
               downgradedPerformance={downgradedPerformance}
               playerConfig={playerConfig}
               onStatsUpdate={setGameStats}
+              onGameOver={(winner: any, currentPlayer: any) => {
+                setWinner(winner);
+                setCurrentPlayer(currentPlayer);
+                setGameOver(true);
+              }}
             />
           </Physics>
         </Suspense>

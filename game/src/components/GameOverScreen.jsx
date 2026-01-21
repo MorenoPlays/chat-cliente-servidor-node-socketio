@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 
-export const GameOverScreen = ({ winner, currentPlayer }) => {
+export const GameOverScreen = ({ winner, currentPlayer, leaveRoom }) => {
   const [countdown, setCountdown] = useState(5);
   const isWinner = winner?.id === currentPlayer?.id;
 
   useEffect(() => {
+    // Sair da sala imediatamente via socket
+    if (leaveRoom) {
+      leaveRoom();
+    }
+
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -17,7 +22,7 @@ export const GameOverScreen = ({ winner, currentPlayer }) => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [leaveRoom]);
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">

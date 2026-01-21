@@ -1,16 +1,17 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
-export const Leaderboard = () => {
+export const Leaderboard = ({ PlayerConfig }) => {
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   // Dados do jogador em single player
+ // console.log("🎮 PlayerConfig recebida:", PlayerConfig);
   const playerData = {
-    name: "Player2222",
-    color: "#59bf82",
-    avatar: "🎮",
+    name: PlayerConfig?.username || "Player2222",
+    color: PlayerConfig?.color || "#59bf82",
+    avatar: PlayerConfig?.avatar || "🎮",
     kills: 0,
     deaths: 0,
   };
@@ -24,7 +25,7 @@ export const Leaderboard = () => {
     if (document.fullscreenElement) {
       document.exitFullscreen();
     }
-    window.location.href = "/home";
+    window.location.href = "/dashboard";
   };
 
   const toggleSound = () => {

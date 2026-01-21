@@ -39,9 +39,9 @@ const Index = () => {
   useEffect(() => {
     if (!loading) {
       const authenticated = isAuthenticated();
-      console.log("Is authenticated:", authenticated);
+      //console.log("Is authenticated:", authenticated);
       if (!authenticated) {
-        console.log("Não autenticado, redirecionando...");
+        //console.log("Não autenticado, redirecionando...");
         navigate("/");
       }
     }
@@ -49,7 +49,7 @@ const Index = () => {
 
   // Se não estiver autenticado, não renderiza nada
   if (loading || !currentUser) {
-    console.log("Sem currentUser");
+    //console.log("Sem currentUser");
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">
         Carregando...
@@ -57,7 +57,7 @@ const Index = () => {
     );
   }
 
-  console.log("Current User:", currentUser);
+  //console.log("Current User:", currentUser);
 
   // Dados do usuário
   const userData = {

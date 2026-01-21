@@ -26,9 +26,13 @@ export const CharacterController = ({
   const group = useRef();
   const character = useRef();
   const rigidbody = useRef();
+
+  // 🔍 DEBUG: Se é jogador local, log qual ID está sendo usado
   const [animation, setAnimation] = useState("Idle");
   const [weapon, setWeapon] = useState("AK");
   const lastShoot = useRef(0);
+  const lastPositionSent = useRef({ x: 0, y: 0, z: 0, rotation: 0 });
+  const lastMoveSendTime = useRef(0);
 
   // Estado das teclas pressionadas
   const [keys, setKeys] = useState({
@@ -73,6 +77,9 @@ export const CharacterController = ({
     if (!userPlayer) return;
 
     const handleKeyDown = (e) => {
+      // ℹ️ Teclado funciona mesmo sem foco (para multi-tab testing)
+      // O mouse tem seu próprio focus check para evitar camera louca
+      
       if (e.key === "w" || e.key === "W") {
         setKeys((k) => ({ ...k, forward: true }));
       }
@@ -96,6 +103,9 @@ export const CharacterController = ({
     };
 
     const handleKeyUp = (e) => {
+      // ℹ️ Teclado funciona mesmo sem foco (para multi-tab testing)
+      // O mouse tem seu próprio focus check para evitar camera louca
+      
       if (e.key === "w" || e.key === "W") {
         setKeys((k) => ({ ...k, forward: false }));
       }
@@ -117,6 +127,9 @@ export const CharacterController = ({
     };
 
     const handleMouseMove = (e) => {
+      // Apenas processar se a janela está em foco
+      if (!document.hasFocus()) return;
+      
       // Sensibilidade do mouse aumentada para rotação mais rápida
       const sensitivity = 0.005;
 
@@ -136,7 +149,10 @@ export const CharacterController = ({
     };
 
     const handleMouseDown = (e) => {
-      // Botão direito do mouse  para atirar
+      // Apenas processar se a janela está em foco
+      if (!document.hasFocus()) return;
+      
+      // Botão esquerdo do mouse para atirar
       if (e.button === 0) {
         e.preventDefault();
         setKeys((k) => ({ ...k, shift: true }));
@@ -144,7 +160,10 @@ export const CharacterController = ({
     };
 
     const handleMouseUp = (e) => {
-      // Soltar botão direito do mouse
+      // Apenas processar se a janela está em foco
+      if (!document.hasFocus()) return;
+      
+      // Soltar botão esquerdo do mouse
       if (e.button === 0) {
         e.preventDefault();
         setKeys((k) => ({ ...k, shift: false }));
@@ -163,6 +182,28 @@ export const CharacterController = ({
       }
     };
 
+    const handleWindowBlur = () => {
+      // Quando a janela perde foco, resetar todas as teclas
+      setKeys({
+        forward: false,
+        backward: false,
+        left: false,
+        right: false,
+        shift: false,
+        jump: false,
+      });
+      
+      // Sair do pointer lock
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      // Quando a janela ganha foco novamente, não há muito a fazer
+      // Os eventos normais de teclado serão recebidos
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("mousemove", handleMouseMove);
@@ -170,6 +211,8 @@ export const CharacterController = ({
     window.addEventListener("mouseup", handleMouseUp);
     window.addEventListener("contextmenu", handleContextMenu);
     window.addEventListener("click", handleClick);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
@@ -179,6 +222,8 @@ export const CharacterController = ({
       window.removeEventListener("mouseup", handleMouseUp);
       window.removeEventListener("contextmenu", handleContextMenu);
       window.removeEventListener("click", handleClick);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
       // Liberar pointer lock ao desmontar
       if (document.pointerLockElement) {
         document.exitPointerLock();
@@ -203,6 +248,11 @@ export const CharacterController = ({
   }, [state.state.health]);
 
   useFrame((_, delta) => {
+    // Verificação defensiva: se rigidbody não está inicializado, pular frame
+    if (!rigidbody.current) {
+      return;
+    }
+
     // Rotacionar a câmera com A e D
     if (userPlayer) {
       const rotationSpeed = 2; // Velocidade de rotação
@@ -223,7 +273,8 @@ export const CharacterController = ({
     }
 
     // CAMERA FOLLOW - TERCEIRA PESSOA
-    if (controls.current) {
+    // ⚠️ Apenas renderizar câmera para jogador local
+    if (userPlayer && controls.current) {
       const playerWorldPos = vec3(rigidbody.current.translation());
 
       // Distâncias da câmera em terceira pessoa
@@ -360,6 +411,7 @@ export const CharacterController = ({
             position: vec3(rigidbody.current.translation()),
             angle: shootAngle, // Disparo segue exatamente a direção do mouse
             player: state.id,
+            shooterId: socket?.myId || state.id, // ✅ Adicionar shooterId
           };
           onFire(newBullet);
         }
@@ -372,13 +424,35 @@ export const CharacterController = ({
     state.setState("rot", character.current.rotation.y);
 
     // Sincronizar posição/rotação pelo socket (para jogador local)
+    // Apenas enviar se houve mudança significativa (otimização)
     if (userPlayer && socket?.connected && socket?.emitMove) {
-      socket.emitMove({
-        position: rigidbody.current.translation(),
-        rotation: { x: 0, y: character.current.rotation.y, z: 0 },
-        animation,
-        velocity: rigidbody.current.linvel(),
-      });
+      const currentPos = rigidbody.current.translation();
+      const currentRotation = character.current.rotation.y;
+      
+      // Calcular distância desde última atualização
+      const dx = currentPos.x - lastPositionSent.current.x;
+      const dy = currentPos.y - lastPositionSent.current.y;
+      const dz = currentPos.z - lastPositionSent.current.z;
+      const distanceSq = dx * dx + dy * dy + dz * dz;
+      
+      // Threshold: 0.01 unidades (movimento mínimo)
+      // OU a cada 100ms mesmo sem movimento (para manter conexão)
+      const now = Date.now();
+      const timeSinceLastSend = now - lastMoveSendTime.current;
+      const shouldSend = distanceSq > 0.0001 || timeSinceLastSend > 100;
+      
+      if (shouldSend) {
+        socket.emitMove({
+          position: currentPos,
+          rotation: { x: 0, y: currentRotation, z: 0 },
+          animation,
+          velocity: rigidbody.current.linvel(),
+        });
+        
+        // Atualizar última posição enviada
+        lastPositionSent.current = { x: currentPos.x, y: currentPos.y, z: currentPos.z, rotation: currentRotation };
+        lastMoveSendTime.current = now;
+      }
     }
 
     // Atualizar posição de jogadores remotos
@@ -404,13 +478,19 @@ export const CharacterController = ({
 
   return (
     <group {...props} ref={group}>
-      <CameraControls ref={controls} />
+      {/* 🎥 IMPORTANTE: Câmera APENAS para o jogador local! */}
+      {userPlayer && <CameraControls ref={controls} />}
       <RigidBody
         ref={rigidbody}
         colliders={false}
         linearDamping={12}
         lockRotations
         type="dynamic"
+        userData={{
+          type: "player",
+          id: state.id,
+          name: state.state.name,
+        }}
         onIntersectionEnter={({ other }) => {
           if (
             other.rigidBody.userData.type === "bullet" &&
@@ -421,12 +501,27 @@ export const CharacterController = ({
               return; // Não se machuca com a própria bala
             }
 
-            const newHealth =
-              state.state.health - other.rigidBody.userData.damage;
+            const damage = other.rigidBody.userData.damage;
+            const newHealth = Math.max(0, state.state.health - damage);
             
-            // Enviar hit pelo socket (para jogador local)
+            console.log("💥 Colisão detectada:", {
+              victimId: state.id,
+              victimName: state.state.name,
+              shooterId: other.rigidBody.userData.player,
+              damage,
+              healthAntes: state.state.health,
+              healthDepois: newHealth,
+              userPlayer,
+            });
+            
+            // Enviar hit pelo socket (para jogador local apenas)
             if (userPlayer && socket?.connected && socket?.emitHit && socket?.myId) {
-              socket.emitHit(state.id, other.rigidBody.userData.damage);
+              console.log("📡 Enviando player-hit para servidor:", {
+                targetId: state.id,
+                damage,
+                newHealth,
+              });
+              socket.emitHit(state.id, damage, state.state.name, newHealth);
             }
 
             if (newHealth <= 0) {

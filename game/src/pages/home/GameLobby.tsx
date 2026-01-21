@@ -34,41 +34,71 @@ const GameLobby = () => {
   // Escutar eventos do socket
   useEffect(() => {
     const socket = getLobbySocket();
-    console.log("socket: ", socket);
+    //console.log("socket: ", socket);
     if (!socket) {
-      console.log("Socket não disponível, redirecionando...");
+      //console.log("Socket não disponível, redirecionando...");
       navigate("/home");
       return;
     }
 
-    console.log("GameLobby: Conectado ao socket existente");
+    //console.log("GameLobby: Conectado ao socket existente");
 
     // Escutar quando sala é criada
     const handleGameCreated = ({ roomId, room }: any) => {
-      console.log("GameLobby: Sala criada, entrando em modo de espera:", room);
+      //console.log("GameLobby: Sala criada, entrando em modo de espera:", room);
       setWaitingRoom({ roomId, ...room });
       setPlayersInRoom([room.host]); // Host já está na sala
     };
 
     // Escutar quando jogador entra em uma sala (para quem aceitou convite)
     const handleRoomJoined = ({ roomId, room }: any) => {
-      console.log("GameLobby: Você entrou na sala:", room);
+      //console.log("GameLobby: Você entrou na sala:", room);
       setWaitingRoom({ roomId, ...room });
       setPlayersInRoom(room.players || []);
     };
 
     // Escutar quando jogador entra na sala
     const handlePlayerJoined = ({ player, room }: any) => {
-      console.log("GameLobby: Jogador entrou na sala:", player);
+      //console.log("GameLobby: Jogador entrou na sala:", player);
       setPlayersInRoom(room.players || []);
       setWaitingRoom((prev: any) => (prev ? { ...prev, ...room } : null));
     };
 
     // Escutar quando jogo inicia
     const handleGameStarting = ({ roomId }: any) => {
-      console.log(" GameLobby: Jogo iniciando na sala:", roomId);
+      //console.log(" GameLobby: Jogo iniciando na sala:", roomId);
       // Guardar roomId no sessionStorage para o jogo acessar
       sessionStorage.setItem("currentRoomId", roomId);
+      
+      // ✅ IMPORTANTE: Guardar playerConfig em sessionStorage também (por aba!)
+      // Pega do socket.data.user que foi definido na conexão
+      if (socket && socket.data && socket.data.user) {
+        sessionStorage.setItem("gamePlayerConfig", JSON.stringify({
+          name: socket.data.user.name,
+          color: socket.data.user.color || "#59bf82",
+          avatar: socket.data.user.avatar || "🎮",
+        }));
+        //console.log("✅ PlayerConfig salvo em sessionStorage:", socket.data.user.name);
+      }
+      
+      navigate("/game");
+    };
+
+    // Listener para evento customizado do socket
+    const handleGameStartingEvent = (event: any) => {
+      //console.log("GameLobby: Recebeu evento game-starting customizado:", event.detail);
+      sessionStorage.setItem("currentRoomId", event.detail.roomId);
+      
+      // ✅ IMPORTANTE: Guardar playerConfig em sessionStorage também
+      if (socket && socket.data && socket.data.user) {
+        sessionStorage.setItem("gamePlayerConfig", JSON.stringify({
+          name: socket.data.user.name,
+          color: socket.data.user.color || "#59bf82",
+          avatar: socket.data.user.avatar || "🎮",
+        }));
+        //console.log("✅ PlayerConfig salvo em sessionStorage:", socket.data.user.name);
+      }
+      
       navigate("/game");
     };
 
@@ -76,14 +106,18 @@ const GameLobby = () => {
     socket.on("room-joined", handleRoomJoined);
     socket.on("player-joined-room", handlePlayerJoined);
     socket.on("game-starting", handleGameStarting);
+    
+    // Ouvir evento customizado
+    window.addEventListener("game-starting", handleGameStartingEvent);
 
     return () => {
       // Apenas remover listeners, não desconectar
-      console.log("GameLobby: Removendo listeners (mantendo conexão)");
+      //console.log("GameLobby: Removendo listeners (mantendo conexão)");
       socket.off("game-created", handleGameCreated);
       socket.off("room-joined", handleRoomJoined);
       socket.off("player-joined-room", handlePlayerJoined);
       socket.off("game-starting", handleGameStarting);
+      window.removeEventListener("game-starting", handleGameStartingEvent);
     };
   }, [navigate]);
 
@@ -91,10 +125,10 @@ const GameLobby = () => {
     if (!waitingRoom) return;
 
     const socket = getLobbySocket();
-    console.log("socket1:", socket);
+   // console.log("socket1:", socket);
     if (!socket) return;
 
-    console.log("Iniciando partida na sala:", waitingRoom.roomId);
+    //console.log("Iniciando partida na sala:", waitingRoom.roomId);
     socket.emit("start-game", waitingRoom.roomId);
   };
 

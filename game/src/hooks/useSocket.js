@@ -46,12 +46,12 @@ export const useSocket = (roomId, playerData) => {
 
     // Atualização de posições (20 FPS)
     socketRef.current.on("update-positions", (playersData) => {
-      console.log("📊 Update-positions recebido:", playersData);
+      //console.log("📊 Update-positions recebido:", playersData);
       setPlayers((prev) => {
         const newPlayers = new Map(prev);
         playersData.forEach((pd) => {
           if (pd.id !== socketRef.current?.id) {
-            console.log(`  → Atualizando jogador remoto: ${pd.id} (${pd.name})`);
+            //console.log(`  → Atualizando jogador remoto: ${pd.id} (${pd.name})`);
             const existing = newPlayers.get(pd.id);
             if (existing) {
               Object.assign(existing, pd);
@@ -66,7 +66,13 @@ export const useSocket = (roomId, playerData) => {
 
     // Novo jogador entrou
     socketRef.current.on("player-joined", (player) => {
-      console.log("🎮 Novo jogador:", player.name);
+      // ⚠️ NÃO adicionar o próprio jogador à lista de remotos
+      if (player.id === socketRef.current?.id) {
+        console.log("🎮 Sou eu que entrei (ignorando):", player.name);
+        return;
+      }
+      
+      console.log("🎮 Novo jogador remoto:", player.name, "ID:", player.id);
       setPlayers((prev) => {
         const newPlayers = new Map(prev);
         newPlayers.set(player.id, { ...player });
@@ -92,9 +98,29 @@ export const useSocket = (roomId, playerData) => {
       );
     });
 
+    // Hit de bala confirmado no servidor
+    socketRef.current.on("bullet-hit-confirmed", ({ bulletId, shooterId, targetId, targetName, position, damage }) => {
+      console.log(`🎯 Bullet-hit-confirmed recebido:`, {
+        bulletId,
+        shooterId,
+        targetId,
+        targetName,
+      });
+      window.dispatchEvent(
+        new CustomEvent("bullet-hit-confirmed", {
+          detail: { bulletId, shooterId, targetId, targetName, position, damage },
+        })
+      );
+    });
+
     // Atualização de vida
-    socketRef.current.on("player-health-update", ({ id, health }) => {
-      console.log(`❤️ ${id} vida: ${health}`);
+    socketRef.current.on("player-health-update", ({ id, health, shooterId, damage }) => {
+      console.log(`❤️ Player-health-update:`, {
+        targetId: id,
+        newHealth: health,
+        damage,
+        shooterId,
+      });
       setPlayers((prev) => {
         const newPlayers = new Map(prev);
         const player = newPlayers.get(id);
@@ -138,6 +164,7 @@ export const useSocket = (roomId, playerData) => {
         socketRef.current.off("player-joined");
         socketRef.current.off("player-shot");
         socketRef.current.off("player-killed");
+        socketRef.current.off("bullet-hit-confirmed");
         socketRef.current.off("player-health-update");
         socketRef.current.off("player-respawn");
         socketRef.current.off("player-left");
@@ -175,14 +202,24 @@ export const useSocket = (roomId, playerData) => {
     }
   };
 
-  const emitHit = (targetId, damage) => {
+  const emitHit = (targetId, damage, targetName, currentTargetHealth) => {
     if (socketRef.current && socketRef.current.connected) {
+      const newHealth = Math.max(0, currentTargetHealth - damage);
       socketRef.current.emit("player-hit", {
         roomId,
         targetId,
         damage,
+        targetName,
+        targetHealth: newHealth,
         shooterId: socketRef.current.id,
       });
+    }
+  };
+
+  const leaveRoom = () => {
+    if (socketRef.current && socketRef.current.connected) {
+      console.log("👋 Saindo da sala:", roomId);
+      socketRef.current.emit("leave-room", { roomId });
     }
   };
 
@@ -194,6 +231,7 @@ export const useSocket = (roomId, playerData) => {
     emitMove,
     emitShoot,
     emitHit,
+    leaveRoom,
     myId: socketRef.current?.id,
   };
 };
